@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"golang.org/x/crypto/ssh"
 	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -21,13 +23,13 @@ func makeSigner(p string) ssh.Signer {
 	if err != nil {
 		log.Fatalf("unable to read private key: %v", key)
 	}
+	// TODO: use ssh-agent instead
 	signer, err := ssh.NewSignerFromKey(key)
 	if err != nil {
 		log.Println("Private key is encrypted")
 		passPhrase := os.Getenv("PASSPHRASE")
 		if passPhrase == "" {
 			log.Println("PASSPHRASE is not set as env variable")
-			// TODO: ask paraphrase in case
 		}
 		rawKey, err := ssh.ParseRawPrivateKeyWithPassphrase(key, []byte(passPhrase))
 		signer, err = ssh.NewSignerFromKey(rawKey)
@@ -70,7 +72,7 @@ func makeUserConf() *config {
 func execCommand(h string, command string, conf *config) (c chan string) {
 	c = make(chan string)
 	go func() {
-		fmt.Println("enter host:", h)
+		log.Println("enter host:", h)
 		client, err := ssh.Dial("tcp", h, conf.ClientConf)
 		if err != nil {
 			log.Fatal("Failed to dial: ", err)
@@ -85,37 +87,73 @@ func execCommand(h string, command string, conf *config) (c chan string) {
 
 		// Once a Session is created, you can execute a single command on
 		// the remote side using the Run method.
-		// TODO: up to 20 hosts; run a command simultaneity .. .. .
-		var b bytes.Buffer
-		session.Stdout = &b
+		var stdout, stderr bytes.Buffer
+		session.Stdout = &stdout
+		session.Stderr = &stderr
 		if err := session.Run(command); err != nil {
-			log.Fatal("Failed to run: " + err.Error())
+			log.Println("Failed to run command at host: ", h, "\n", err.Error())
 		}
+		c <- stderr.String() + stdout.String()
 
-		c <- b.String()
 	}()
 	return
 }
 
-func main() {
-	c := makeUserConf()
+type arrayFlags []string
 
-	dstHosts := strings.Split(os.Getenv("H"), " ")
+func (i *arrayFlags) String() string {
+	return fmt.Sprintf("%s", *i)
+}
+
+func (i *arrayFlags) Set(value string) error {
+	*i = append(*i, value)
+	return nil
+}
+
+func main() {
+	var port int
+	var dstHosts arrayFlags
+	//var dstHostsString, command string
+	var command string
+
+	flag.IntVar(&port, "p", 22, "an int")
+	flag.Var(&dstHosts, "hosts", `destination addresses
+	Usage: -hosts=host:port
+	Examples:
+	-hosts=127.{1,2,3}               -> [ 127.1:22, 127.2:22, 127.3:22 ]
+	-hosts=127.{1,2:2222,3}          -> [ 127.1:22, 127.2:2222, 127.3:22 ]
+	-hosts=127.{1:22,2:22,4} -p 2222 -> [ 127.1:22, 127.2:22, 127.4:2222 ]`)
+	flag.StringVar(&command, "c", "hostname", "bash command you want to execute on the destination hosts")
+	flag.Parse()
+
 	if len(dstHosts) == 0 {
 		log.Fatal("Destination Host is not defined")
+	} else {
+		log.Println("dstHosts: ", dstHosts)
 	}
-	command := os.Getenv("C")
+
 	if command == "" {
-		command = "env"
+		log.Fatal("command can't be empty")
+	} else {
+		log.Println("command: ", command)
 	}
-	command = "date; hostname; sleep 3 ; date"
-	//dstHosts="127.0.0.1:22 m104.sjc.opendns.com:22 graphite013.sjc.opendns.com:22 graphite011.sjc.opendns.com:22"
+
+	log.Println("default port: ", port)
+
+	conf := makeUserConf()
+
+	//// for test purposes (avoid env variables)
+	//command = "sleep 3; hostname"
+
 	var workers []chan string
 
 	for _, dstHost := range dstHosts {
-		workers = append(workers, execCommand(dstHost, command, c))
+		if !strings.Contains(dstHost, ":") {
+			dstHost += ":" + strconv.Itoa(port)
+		}
+		workers = append(workers, execCommand(dstHost, command, conf))
 	}
 	for _, w := range workers {
-		fmt.Println(<- w)
+		fmt.Println(<-w)
 	}
 }
