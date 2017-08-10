@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"golang.org/x/crypto/ssh"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -18,23 +19,53 @@ type config struct {
 	ClientConf *ssh.ClientConfig
 }
 
+var (
+	Trace   *log.Logger
+	Info    *log.Logger
+	Warning *log.Logger
+	Error   *log.Logger
+)
+
+func Init_log(
+	traceHandle io.Writer,
+	infoHandle io.Writer,
+	warningHandle io.Writer,
+	errorHandle io.Writer) {
+
+	Trace = log.New(traceHandle,
+		"TRACE: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
+
+	Info = log.New(infoHandle,
+		"INFO: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
+
+	Warning = log.New(warningHandle,
+		"WARNING: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
+
+	Error = log.New(errorHandle,
+		"ERROR: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
+}
+
 func makeSigner(p string) ssh.Signer {
 	key, err := ioutil.ReadFile(p)
 	if err != nil {
-		log.Fatalf("unable to read private key: %v", key)
+		Error.Fatalf("unable to read private key: %v", key)
 	}
 	// TODO: use ssh-agent instead
 	signer, err := ssh.NewSignerFromKey(key)
 	if err != nil {
-		log.Println("Private key is encrypted")
+		Info.Println("Private key is encrypted")
 		passPhrase := os.Getenv("PASSPHRASE")
 		if passPhrase == "" {
-			log.Println("PASSPHRASE is not set as env variable")
+			Info.Println("PASSPHRASE is not set as env variable")
 		}
 		rawKey, err := ssh.ParseRawPrivateKeyWithPassphrase(key, []byte(passPhrase))
 		signer, err = ssh.NewSignerFromKey(rawKey)
 		if err != nil {
-			log.Fatalf("unable to parse private key: %v", err)
+			Error.Fatalf("unable to parse private key: %v", err)
 		}
 	}
 	return signer
@@ -57,7 +88,7 @@ func makeUserConf() *config {
 
 	c.User = os.Getenv("USER")
 	if c.User == "" {
-		log.Fatal("User is not defined")
+		Error.Fatal("User is not defined")
 	}
 
 	home := "/Users/" + c.User
@@ -69,19 +100,26 @@ func makeUserConf() *config {
 	return &c
 }
 
-func execCommand(h string, command string, conf *config) (c chan string) {
-	c = make(chan string)
+func execCommand(h string, command string, conf *config, workers chan chan string) {
 	go func() {
-		log.Println("enter host:", h)
+		c := make(chan string, 1)
+		defer func() { workers <- c }()
+		Trace.Println("enter host:", h)
 		client, err := ssh.Dial("tcp", h, conf.ClientConf)
 		if err != nil {
-			log.Fatal("Failed to dial: ", err)
+			Error.Println(
+				"Failed to dial", h)
+			c <- err.Error()
+			return
 		}
 		defer client.Close()
 
 		session, err := client.NewSession()
 		if err != nil {
-			log.Fatal("Failed to create session: ", err)
+			Error.Println(
+				"Failed to create session with: " + h)
+			c <- err.Error()
+			return
 		}
 		defer session.Close()
 
@@ -91,12 +129,11 @@ func execCommand(h string, command string, conf *config) (c chan string) {
 		session.Stdout = &stdout
 		session.Stderr = &stderr
 		if err := session.Run(command); err != nil {
-			log.Println("Failed to run command at host: ", h, "\n", err.Error())
+			Warning.Println("Failed to run command at host: ", h, "\n"+err.Error())
 		}
-		c <- stderr.String() + stdout.String()
-
+		c <- "--------------\n" + "host: " + h + "\n" + stderr.String() + stdout.String()
+		// workers <- c
 	}()
-	return
 }
 
 type arrayFlags []string
@@ -116,6 +153,9 @@ func main() {
 	//var dstHostsString, command string
 	var command string
 
+	// initiate log levels
+	Init_log(ioutil.Discard, os.Stdout, os.Stdout, os.Stderr)
+
 	flag.IntVar(&port, "p", 22, "an int")
 	flag.Var(&dstHosts, "hosts", `destination addresses
 	Usage: -hosts=host:port
@@ -127,33 +167,33 @@ func main() {
 	flag.Parse()
 
 	if len(dstHosts) == 0 {
-		log.Fatal("Destination Host is not defined")
+		Error.Fatal("Destination Host is not defined")
 	} else {
-		log.Println("dstHosts: ", dstHosts)
+		Info.Println("dstHosts: ", dstHosts)
 	}
 
 	if command == "" {
-		log.Fatal("command can't be empty")
+		Error.Fatal("command can't be empty")
 	} else {
-		log.Println("command: ", command)
+		Info.Println("command: ", command)
 	}
-
-	log.Println("default port: ", port)
+	Info.Println("default port: ", port)
 
 	conf := makeUserConf()
 
 	//// for test purposes (avoid env variables)
 	//command = "sleep 3; hostname"
 
-	var workers []chan string
+	var workers = make(chan chan string)
 
 	for _, dstHost := range dstHosts {
 		if !strings.Contains(dstHost, ":") {
 			dstHost += ":" + strconv.Itoa(port)
 		}
-		workers = append(workers, execCommand(dstHost, command, conf))
+		//workers = append(workers, execCommand(dstHost, command, conf))
+		execCommand(dstHost, command, conf, workers)
 	}
-	for _, w := range workers {
-		fmt.Println(<-w)
+	for i := 0; i < len(dstHosts); i++ {
+		fmt.Println(<-(<-workers))
 	}
 }
