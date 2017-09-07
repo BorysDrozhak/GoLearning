@@ -103,6 +103,7 @@ func makeUserConf() *config {
 func execCommand(h string, command string, conf *config, workers chan chan string) {
 	go func() {
 		c := make(chan string, 1)
+		//workers <- c
 		defer func() { workers <- c }()
 		Trace.Println("enter host:", h)
 		client, err := ssh.Dial("tcp", h, conf.ClientConf)
@@ -147,6 +148,11 @@ func (i *arrayFlags) Set(value string) error {
 	return nil
 }
 
+//func init() {
+//
+//	Init_log(ioutil.Discard, os.Stdout, os.Stdout, os.Stderr)
+//}
+
 func main() {
 	var port int
 	var dstHosts arrayFlags
@@ -157,12 +163,12 @@ func main() {
 	Init_log(ioutil.Discard, os.Stdout, os.Stdout, os.Stderr)
 
 	flag.IntVar(&port, "p", 22, "an int")
-	flag.Var(&dstHosts, "hosts", `destination addresses
+	flag.Var(&dstHosts, "h", `destination addresses
 	Usage: -hosts=host:port
 	Examples:
-	-hosts=127.{1,2,3}               -> [ 127.1:22, 127.2:22, 127.3:22 ]
-	-hosts=127.{1,2:2222,3}          -> [ 127.1:22, 127.2:2222, 127.3:22 ]
-	-hosts=127.{1:22,2:22,4} -p 2222 -> [ 127.1:22, 127.2:22, 127.4:2222 ]`)
+	-h=127.{1,2,3}               -> [ 127.1:22, 127.2:22, 127.3:22 ]
+	-h=127.{1,2:2222,3}          -> [ 127.1:22, 127.2:2222, 127.3:22 ]
+	-h=127.{1:22,2:22,4} -p 2222 -> [ 127.1:22, 127.2:22, 127.4:2222 ]`)
 	flag.StringVar(&command, "c", "hostname", "bash command you want to execute on the destination hosts")
 	flag.Parse()
 
