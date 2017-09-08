@@ -1,3 +1,2 @@
----
-a: first
-b: second
+aggregation: proxy
+chatTimeout : 120
