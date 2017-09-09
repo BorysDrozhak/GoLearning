@@ -7,20 +7,19 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
-	"fmt"
 )
 
 const configFileName = "config.yml"
 const serverListenAddress = "127.0.0.1:8090"
 
+
 type StructConfig struct {
-	aggregation string `yaml:"aggregation"`
-	b int `yaml:"chatTimeout"`
+	Aggregation string `yaml:"aggregation"`
+	ChatTimeout string `yaml:"chatTimeout"`
 }
 
-
 func main() {
-	var configStruct StructConfig
+	var ConfigStruct StructConfig
 	pwd := "/Users/bdrozhak/IdeaProjects/GoLearning/src/github.com/BorysDrozhak/GoLearning/api_for_config/"
 	configFileNameFullPath := filepath.Join(pwd, configFileName)
 
@@ -33,44 +32,29 @@ func main() {
 			"version": "v0",
 		})
 	})
-	v0.GET("/config/:rule", func(c *gin.Context) {
-		bytes, err := ioutil.ReadFile(configFileNameFullPath)
-		if err != nil {
-			log.Println("Can't read file: ", err)
-			c.Status(http.StatusInternalServerError)
-			return
-		}
-		//log.Println(string(bytes))
-
-		err = yaml.Unmarshal(bytes, &configStruct)
+	v0.GET("/configs/:rule", func(c *gin.Context) {
+		conf, err := ioutil.ReadFile(configFileNameFullPath)
 		if err != nil {
 			log.Println("Can't read file: ", err)
 			c.Status(http.StatusInternalServerError)
 			return
 		}
 
-		//fmt.Println(configStruct)
+		err = yaml.Unmarshal(conf, &ConfigStruct)
+		if err != nil {
+			log.Println("Can't read file: ", err)
+			c.Status(http.StatusInternalServerError)
+			return
+		}
+
 		switch rule := c.Params.ByName("rule"); rule {
 			case "aggregation":
-				v, err := yaml.Marshal(configStruct.aggregation)
-				if err != nil {
-					log.Println("Can't serialize: ", err)
-					c.Status(http.StatusInternalServerError)
-					return
-				}
-				c.YAML(200, v)
+				c.YAML(200, ConfigStruct.Aggregation)
 			case "chatTimeout":
-				b := fmt.Sprintf("%v", configStruct.b)
-				//fmt.Println(b)
-				c.JSON(200, b)
+				c.YAML(200, ConfigStruct.ChatTimeout)
 			case "all":
-				c.JSON(200, fmt.Sprintf("%v", &configStruct))
+				c.YAML(200, ConfigStruct)
 			default:
-				//data, err  := json.Marshal(&configStruct)
-				//if err != nil {
-				//	log.Println("Can't load to json: ", err)
-				//	c.Status(http.StatusInternalServerError)
-				//	return
 				log.Println("there is no such a rule: ", rule )
 				c.Status(http.StatusNotFound)
 				return
