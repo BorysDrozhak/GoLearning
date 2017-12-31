@@ -7,15 +7,22 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"fmt"
 )
 
 const configFileName = "config.yml"
 const serverListenAddress = "127.0.0.1:8090"
 
+type StructConfigJson struct {
+	Aggregation string `json:"aggregation"`
+	ChatTimeout string `json:"chatTimeout"`
+	URL string `json:"url"`
+}
 
 type StructConfig struct {
 	Aggregation string `yaml:"aggregation"`
 	ChatTimeout string `yaml:"chatTimeout"`
+	Url string `yaml:"url"`
 }
 
 func main() {
@@ -60,5 +67,14 @@ func main() {
 				return
 			}
 		})
+
+	v0.POST("/url", func(c *gin.Context) {
+		var configStructJson StructConfigJson
+		c.BindJSON(&configStructJson)
+		ConfigStruct.Url = fmt.Sprintf("%v",configStructJson)
+		fmt.Println(ConfigStruct.Url)
+
+	})
+
 	r.Run(serverListenAddress) // listen and serve
 }

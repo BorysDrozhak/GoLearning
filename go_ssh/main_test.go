@@ -10,7 +10,7 @@ import (
 var conf *config
 
 func init() {
-	Init_log(ioutil.Discard, os.Stdout, os.Stdout, os.Stderr)
+	InitLog(ioutil.Discard, os.Stdout, os.Stdout, os.Stderr)
 	conf = makeUserConf()
 }
 

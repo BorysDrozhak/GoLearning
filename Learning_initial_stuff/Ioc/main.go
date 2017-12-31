@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"time"
 )
 
 type DB interface {
@@ -112,7 +111,7 @@ func main() {
 	c := NewController()
 	fmt.Println(c.work1())
 
-	c.viewRender.Render()
+	//c.viewRender.Render()
 
 	// v := NewController()
 

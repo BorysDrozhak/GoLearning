@@ -15,5 +15,5 @@
 
 .idea/
 *.iml
-
+.DS_Store
 GoLearning

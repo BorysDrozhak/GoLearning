@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bytes"
+	//"bytes"
 	"flag"
 	"fmt"
 	"golang.org/x/crypto/ssh"
@@ -26,7 +26,7 @@ var (
 	Error   *log.Logger
 )
 
-func Init_log(
+func InitLog(
 	traceHandle io.Writer,
 	infoHandle io.Writer,
 	warningHandle io.Writer,
@@ -92,8 +92,8 @@ func makeUserConf() *config {
 	}
 
 	home := "/Users/" + c.User
-	private_key_path := "/.ssh/id_rsa"
-	p := home + private_key_path
+	privateKeyPath := "/.ssh/id_rsa"
+	p := home + privateKeyPath
 
 	signer := makeSigner(p)
 	c.ClientConf = prepareSshConfig(signer, c.User)
@@ -124,15 +124,11 @@ func execCommand(h string, command string, conf *config, workers chan chan strin
 		}
 		defer session.Close()
 
-		// Once a Session is created, you can execute a single command on
-		// the remote side using the Run method.
-		var stdout, stderr bytes.Buffer
-		session.Stdout = &stdout
-		session.Stderr = &stderr
-		if err := session.Run(command); err != nil {
-			Warning.Println("Failed to run command at host: ", h, "\n"+err.Error())
+		if response, err := session.CombinedOutput(command); err != nil {
+			c <- "--------------\n" + "host: " + h + "\n" + string(response) + "\nERRORS:\n" + err.Error()
+		} else {
+			c <- "--------------\n" + "host: " + h + "\n" + string(response)
 		}
-		c <- "--------------\n" + "host: " + h + "\n" + stderr.String() + stdout.String()
 		// workers <- c
 	}()
 }
@@ -160,7 +156,7 @@ func main() {
 	var command string
 
 	// initiate log levels
-	Init_log(ioutil.Discard, os.Stdout, os.Stdout, os.Stderr)
+	InitLog(ioutil.Discard, os.Stdout, os.Stdout, os.Stderr)
 
 	flag.IntVar(&port, "p", 22, "an int")
 	flag.Var(&dstHosts, "h", `destination addresses
